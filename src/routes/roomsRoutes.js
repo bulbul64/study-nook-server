@@ -50,4 +50,25 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+router.patch('/:id', async (req, res) => {
+  try {
+    const db = await connectDB("StudyNook");
+    const collection = db.collection('rooms');
+    
+    const roomId = req.params.id;
+    const updates = req.body;
+    
+    const result = await collection.updateOne({ _id: new ObjectId(roomId) }, { $set: updates });
+    
+    if (result.modifiedCount === 0) {
+      return res.status(404).send({ message: "Room not found" });
+    }
+    
+    res.status(200).send({ message: "Room updated successfully" });
+  } catch (error) {
+    console.error("Error updating room:", error);
+    res.status(500).send({ message: "Internal Server Error" });
+  }
+});
+
 module.exports = router;
