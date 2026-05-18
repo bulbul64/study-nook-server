@@ -16,4 +16,18 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.get('/', async (req, res) => {
+  try {
+    const db = await connectDB("StudyNook");
+    const collection = db.collection('rooms');
+    
+    const rooms = await collection.find().toArray();
+    
+    res.status(200).send(rooms);
+  } catch (error) {
+    console.error("Error fetching rooms:", error);
+    res.status(500).send({ message: "Internal Server Error" });
+  }
+});
+
 module.exports = router;
