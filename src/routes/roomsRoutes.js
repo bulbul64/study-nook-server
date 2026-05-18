@@ -73,4 +73,24 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
+router.delete('/:id', async (req, res) => {
+  try {
+    const db = await connectDB('StudyNook');
+    const collection = db.collection('rooms');
+
+    const roomId = req.params.id;
+
+    const result = await collection.deleteOne({ _id: new ObjectId(roomId) });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).send({ message: 'Room not found' });
+    }
+
+    res.status(200).send({ message: 'Room deleted successfully', result });
+  } catch (error) {
+    console.error('Error deleting room:', error);
+    res.status(500).send({ message: 'Internal Server Error' });
+  }
+});
+
 module.exports = router;
