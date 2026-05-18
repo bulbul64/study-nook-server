@@ -4,70 +4,72 @@ const { ObjectId } = require('mongodb');
 
 router.post('/', async (req, res) => {
   try {
-    const db = await connectDB("StudyNook");
+    const db = await connectDB('StudyNook');
     const collection = db.collection('rooms');
-    
+
     const room = req.body;
     const result = await collection.insertOne(room);
-    
+
     res.status(201).send(result);
   } catch (error) {
-    console.error("Error creating room:", error);
-    res.status(500).send({ message: "Internal Server Error" });
+    console.error('Error creating room:', error);
+    res.status(500).send({ message: 'Internal Server Error' });
   }
 });
 
 router.get('/', async (req, res) => {
   try {
-    const db = await connectDB("StudyNook");
+    const db = await connectDB('StudyNook');
     const collection = db.collection('rooms');
-    
+
     const rooms = await collection.find().toArray();
-    
+
     res.status(200).send(rooms);
   } catch (error) {
-    console.error("Error fetching rooms:", error);
-    res.status(500).send({ message: "Internal Server Error" });
+    console.error('Error fetching rooms:', error);
+    res.status(500).send({ message: 'Internal Server Error' });
   }
 });
 
 router.get('/:id', async (req, res) => {
   try {
-    const db = await connectDB("StudyNook");
+    const db = await connectDB('StudyNook');
     const collection = db.collection('rooms');
-    
+
     const roomId = req.params.id;
     const room = await collection.findOne({ _id: new ObjectId(roomId) });
-    
+
     if (!room) {
-      return res.status(404).send({ message: "Room not found" });
+      return res.status(404).send({ message: 'Room not found' });
     }
-    
+
     res.status(200).send(room);
   } catch (error) {
-    console.error("Error fetching room:", error);
-    res.status(500).send({ message: "Internal Server Error" });
+    console.error('Error fetching room:', error);
+    res.status(500).send({ message: 'Internal Server Error' });
   }
 });
 
 router.patch('/:id', async (req, res) => {
   try {
-    const db = await connectDB("StudyNook");
+    const db = await connectDB('StudyNook');
     const collection = db.collection('rooms');
-    
+
     const roomId = req.params.id;
     const updates = req.body;
-    
+
+    delete updates._id;
+
     const result = await collection.updateOne({ _id: new ObjectId(roomId) }, { $set: updates });
-    
-    if (result.modifiedCount === 0) {
-      return res.status(404).send({ message: "Room not found" });
+
+    if (result.matchedCount === 0) {
+      return res.status(404).send({ message: 'Room not found' });
     }
-    
-    res.status(200).send({ message: "Room updated successfully" });
+
+    res.status(200).send({ message: 'Room updated successfully', result });
   } catch (error) {
-    console.error("Error updating room:", error);
-    res.status(500).send({ message: "Internal Server Error" });
+    console.error('Error updating room:', error);
+    res.status(500).send({ message: 'Internal Server Error' });
   }
 });
 
