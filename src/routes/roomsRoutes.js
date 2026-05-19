@@ -1,7 +1,41 @@
 const router = require('express').Router();
+const { createRemoteJWKSet, jwtVerify } = require('jose-cjs');
 const { connectDB } = require('../config/db');
 const { ObjectId } = require('mongodb');
 
+const JWKS = createRemoteJWKSet(
+  new URL('http://localhost:3000/api/auth/jwks')
+)
+
+// Middleware to verify token
+async function verifyToken(req, res, next) {
+  const authHeader = req.headers.authorization;
+ 
+  if (!authHeader) {
+    return res.status(401).send({ message: 'Unauthorized' });
+  }
+
+  const token = authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).send({ message: 'Unauthorized' });
+  }
+
+  console.log(token);
+  next();
+  try{
+   const { payload } = await jwtVerify(token, JWKS, )
+   console.log(payload)
+   next();
+
+   } catch (error) {
+     return res.status(401).send({ message: 'Unauthorized' });
+   }   
+}
+
+ 
+
+// Create a new room
 router.post('/', async (req, res) => {
   try {
     const db = await connectDB('StudyNook');
@@ -17,7 +51,20 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.get('/', async (req, res) => {
+// Create a new booking
+router.post('/bookings', async (req, res) => {
+  const db = await connectDB('StudyNook');
+  const collection = db.collection('bookings');
+  const booking = req.body;
+  const result = await collection.insertOne(booking);
+  res.status(201).send(result);
+  
+})
+
+
+
+// Get all rooms
+router.get('/', async (req, res, next) => {
   try {
     const db = await connectDB('StudyNook');
     const collection = db.collection('rooms');
@@ -31,7 +78,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.get('/:id', async (req, res) => {
+// Get a specific room
+router.get('/:id',  async (req, res) => {
   try {
     const db = await connectDB('StudyNook');
     const collection = db.collection('rooms');
@@ -49,6 +97,8 @@ router.get('/:id', async (req, res) => {
     res.status(500).send({ message: 'Internal Server Error' });
   }
 });
+
+// Update a specific room
 
 router.patch('/:id', async (req, res) => {
   try {
@@ -73,6 +123,7 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
+// Delete a specific room
 router.delete('/:id', async (req, res) => {
   try {
     const db = await connectDB('StudyNook');
@@ -92,5 +143,7 @@ router.delete('/:id', async (req, res) => {
     res.status(500).send({ message: 'Internal Server Error' });
   }
 });
+
+
 
 module.exports = router;
