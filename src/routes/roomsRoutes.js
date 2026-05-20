@@ -38,20 +38,93 @@ async function verifyToken(req, res, next) {
     return res.status(401).send({ message: 'Unauthorized: Server verification error' });
   }
 }
-
 // Create a new booking
 router.post('/bookings', verifyToken, async (req, res) => {
   try {
     const db = await connectDB('StudyNook');
     const collection = db.collection('bookings');
+    
+    
+    const { roomId, date, startTime, endTime } = req.body;
+
+    
+    const conflictingBooking = await collection.findOne({
+      roomId: roomId, 
+      date: date,     
+      startTime: { $lt: endTime }, 
+      endTime: { $gt: startTime } 
+    });
+
+  
+    if (conflictingBooking) {
+      return res.status(400).send({ 
+        message: 'দুঃখিত, এই সময়ের স্লটটি ইতিমধ্যে বুকড হয়ে গেছে! অন্য সময় চেষ্টা করুন।' 
+      });
+    }
+
+    
     const booking = {
       ...req.body,
       userId: req.user.id 
     };
+    
     const result = await collection.insertOne(booking);
     res.status(201).send(result);
+
   } catch (error) {
     console.error('Error creating booking:', error);
+    res.status(500).send({ message: 'Internal Server Error' });
+  }
+});
+
+
+
+
+// Cancel a booking
+router.patch('/bookings/:id/cancel', verifyToken, async (req, res) => {
+  try {
+    const db = await connectDB('StudyNook');
+    const bookingsCollection = db.collection('bookings');
+    const usersCollection = db.collection('users');
+    const roomsCollection = db.collection('rooms');
+
+    const bookingId = req.params.id;
+    const userId = req.user.id;
+
+   
+    const booking = await bookingsCollection.findOne({ _id: new ObjectId(bookingId) });
+
+    if (!booking) {
+      return res.status(404).send({ message: 'Booking not found!' });
+    }
+
+    
+    if (booking.userId !== userId) {
+      return res.status(403).send({ message: 'You are not authorized to cancel this booking!' });
+    }
+
+
+    await bookingsCollection.updateOne(
+      { _id: new ObjectId(bookingId) },
+      { $set: { status: 'cancelled' } }
+    );
+
+   
+    await usersCollection.updateOne(
+      { _id: new ObjectId(userId) },
+      { $pull: { bookings: bookingId } }
+    );
+
+  
+    await roomsCollection.updateOne(
+      { _id: new ObjectId(booking.roomId) },
+      { $inc: { bookingCount: -1 } }
+    );
+
+    res.status(200).send({ message: 'Booking cancelled successfully' });
+
+  } catch (error) {
+    console.error('Error cancelling booking:', error);
     res.status(500).send({ message: 'Internal Server Error' });
   }
 });
