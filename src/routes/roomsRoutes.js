@@ -1,76 +1,113 @@
 const router = require('express').Router();
-const { createRemoteJWKSet, jwtVerify } = require('jose-cjs');
 const { connectDB } = require('../config/db');
 const { ObjectId } = require('mongodb');
 
-const JWKS = createRemoteJWKSet(
-  new URL('http://localhost:3000/api/auth/jwks')
-)
-
-// Middleware to verify token
+// Middleware to verify session directly using Better-Auth Next.js endpoint
 async function verifyToken(req, res, next) {
-  const authHeader = req.headers.authorization;
- 
-  if (!authHeader) {
-    return res.status(401).send({ message: 'Unauthorized' });
+
+  const cookieHeader = req.headers.cookie;
+
+  if (!cookieHeader) {
+    return res.status(401).send({ message: 'Unauthorized: No cookie found' });
   }
 
-  const token = authHeader.split(' ')[1];
+  try {
+    
+    const response = await fetch('http://localhost:3000/api/auth/get-session', {
+      method: 'GET',
+      headers: {
+        'cookie': cookieHeader 
+      }
+    });
 
-  if (!token) {
-    return res.status(401).send({ message: 'Unauthorized' });
+    if (!response.ok) {
+      return res.status(401).send({ message: 'Unauthorized: Invalid session' });
+    }
+
+    const sessionData = await response.json();
+   
+    if (!sessionData || !sessionData.user) {
+      return res.status(401).send({ message: 'Unauthorized: User not found in session' });
+    }
+
+    
+    req.user = sessionData.user; 
+    next();
+  } catch (error) {
+    console.error("Session verification failed:", error.message);
+    return res.status(401).send({ message: 'Unauthorized: Server verification error' });
   }
-
-  console.log(token);
-  next();
-  try{
-   const { payload } = await jwtVerify(token, JWKS, )
-   console.log(payload)
-   next();
-
-   } catch (error) {
-     return res.status(401).send({ message: 'Unauthorized' });
-   }   
 }
 
- 
-
-// Create a new room
-router.post('/', async (req, res) => {
+// Create a new booking
+router.post('/bookings', verifyToken, async (req, res) => {
   try {
     const db = await connectDB('StudyNook');
-    const collection = db.collection('rooms');
-
-    const room = req.body;
-    const result = await collection.insertOne(room);
-
+    const collection = db.collection('bookings');
+    const booking = {
+      ...req.body,
+      userId: req.user.id 
+    };
+    const result = await collection.insertOne(booking);
     res.status(201).send(result);
   } catch (error) {
-    console.error('Error creating room:', error);
+    console.error('Error creating booking:', error);
     res.status(500).send({ message: 'Internal Server Error' });
   }
 });
 
-// Create a new booking
-router.post('/bookings', async (req, res) => {
-  const db = await connectDB('StudyNook');
-  const collection = db.collection('bookings');
-  const booking = req.body;
-  const result = await collection.insertOne(booking);
-  res.status(201).send(result);
-  
-})
+// Get all my bookings
+router.get('/bookings/me', verifyToken, async (req, res) => {
+  try {
+    const db = await connectDB('StudyNook');
+    const collection = db.collection('bookings');
+    const result = await collection.find({ userId: req.user.id }).toArray();
+    res.status(200).send(result);
+  } catch (error) {
+    console.error('Error fetching bookings:', error);
+    res.status(500).send({ message: 'Internal Server Error' });
+  }
+});
 
-
-
-// Get all rooms
-router.get('/', async (req, res, next) => {
+// Create a new room
+router.post('/', verifyToken, async (req, res) => {
   try {
     const db = await connectDB('StudyNook');
     const collection = db.collection('rooms');
 
-    const rooms = await collection.find().toArray();
+    const room = {
+      ...req.body,
+      ownerId: req.user.id 
+    };
+    const result = await collection.insertOne(room);
+    res.status(201).send(result);
+  } catch (error) {
+    console.error('Error creating room:', error);
+    res.status(500).send({ message: 'Internal Server Error' });
+  }  
+});  
 
+// Get all my rooms
+router.get('/my-rooms', verifyToken, async (req, res) => {
+  try {
+    const db = await connectDB('StudyNook');
+    const collection = db.collection('rooms');
+    
+   
+    const result = await collection.find({ ownerId: req.user.id }).toArray();
+    res.status(200).send(result);
+  } catch (error) {
+    console.error('Error fetching my rooms:', error);
+    res.status(500).send({ message: 'Internal Server Error' });
+  }
+});
+
+// Get all rooms
+router.get('/',  async (req, res) => {
+  try {
+    const db = await connectDB('StudyNook');
+    const collection = db.collection('rooms');
+    const rooms = await collection.find().toArray();
     res.status(200).send(rooms);
   } catch (error) {
     console.error('Error fetching rooms:', error);
@@ -81,10 +118,14 @@ router.get('/', async (req, res, next) => {
 // Get a specific room
 router.get('/:id',  async (req, res) => {
   try {
+    const roomId = req.params.id;
+    
+    if (!ObjectId.isValid(roomId)) {
+      return res.status(400).send({ message: 'Invalid Room ID format' });
+    }
+
     const db = await connectDB('StudyNook');
     const collection = db.collection('rooms');
-
-    const roomId = req.params.id;
     const room = await collection.findOne({ _id: new ObjectId(roomId) });
 
     if (!room) {
@@ -98,23 +139,35 @@ router.get('/:id',  async (req, res) => {
   }
 });
 
-// Update a specific room
-
-router.patch('/:id', async (req, res) => {
+// Update a specific room 
+router.patch('/:id', verifyToken, async (req, res) => {
   try {
+    const roomId = req.params.id;
+
+    if (!ObjectId.isValid(roomId)) {
+      return res.status(400).send({ message: 'Invalid Room ID format' });
+    }
+
     const db = await connectDB('StudyNook');
     const collection = db.collection('rooms');
 
-    const roomId = req.params.id;
-    const updates = req.body;
+    
+    const room = await collection.findOne({ _id: new ObjectId(roomId) });
 
-    delete updates._id;
-
-    const result = await collection.updateOne({ _id: new ObjectId(roomId) }, { $set: updates });
-
-    if (result.matchedCount === 0) {
+    if (!room) {
       return res.status(404).send({ message: 'Room not found' });
     }
+
+   
+    if (room.ownerId !== req.user.id) {
+      return res.status(403).send({ message: 'Forbidden: You can only update your own rooms' });
+    }
+
+    const updates = req.body;
+    delete updates._id; 
+
+  
+    const result = await collection.updateOne({ _id: new ObjectId(roomId) }, { $set: updates });
 
     res.status(200).send({ message: 'Room updated successfully', result });
   } catch (error) {
@@ -124,18 +177,30 @@ router.patch('/:id', async (req, res) => {
 });
 
 // Delete a specific room
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', verifyToken, async (req, res) => {
   try {
+    const roomId = req.params.id;
+
+    if (!ObjectId.isValid(roomId)) {
+      return res.status(400).send({ message: 'Invalid Room ID format' });
+    }
+
     const db = await connectDB('StudyNook');
     const collection = db.collection('rooms');
 
-    const roomId = req.params.id;
+ 
+    const room = await collection.findOne({ _id: new ObjectId(roomId) });
 
-    const result = await collection.deleteOne({ _id: new ObjectId(roomId) });
-
-    if (result.deletedCount === 0) {
+    if (!room) {
       return res.status(404).send({ message: 'Room not found' });
     }
+
+  
+    if (room.ownerId !== req.user.id) {
+      return res.status(403).send({ message: 'Forbidden: You can only delete your own rooms' });
+    }
+
+    const result = await collection.deleteOne({ _id: new ObjectId(roomId) });
 
     res.status(200).send({ message: 'Room deleted successfully', result });
   } catch (error) {
@@ -143,7 +208,5 @@ router.delete('/:id', async (req, res) => {
     res.status(500).send({ message: 'Internal Server Error' });
   }
 });
-
-
 
 module.exports = router;
