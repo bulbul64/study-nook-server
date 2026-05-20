@@ -4,7 +4,6 @@ const { ObjectId } = require('mongodb');
 
 // Middleware to verify session directly using Better-Auth Next.js endpoint
 async function verifyToken(req, res, next) {
-
   const cookieHeader = req.headers.cookie;
 
   if (!cookieHeader) {
@@ -12,12 +11,11 @@ async function verifyToken(req, res, next) {
   }
 
   try {
-    
     const response = await fetch('http://localhost:3000/api/auth/get-session', {
       method: 'GET',
       headers: {
-        'cookie': cookieHeader 
-      }
+        cookie: cookieHeader,
+      },
     });
 
     if (!response.ok) {
@@ -25,16 +23,15 @@ async function verifyToken(req, res, next) {
     }
 
     const sessionData = await response.json();
-   
+
     if (!sessionData || !sessionData.user) {
       return res.status(401).send({ message: 'Unauthorized: User not found in session' });
     }
 
-    
-    req.user = sessionData.user; 
+    req.user = sessionData.user;
     next();
   } catch (error) {
-    console.error("Session verification failed:", error.message);
+    console.error('Session verification failed:', error.message);
     return res.status(401).send({ message: 'Unauthorized: Server verification error' });
   }
 }
@@ -43,42 +40,34 @@ router.post('/bookings', verifyToken, async (req, res) => {
   try {
     const db = await connectDB('StudyNook');
     const collection = db.collection('bookings');
-    
-    
+
     const { roomId, date, startTime, endTime } = req.body;
 
-    
     const conflictingBooking = await collection.findOne({
-      roomId: roomId, 
-      date: date,     
-      startTime: { $lt: endTime }, 
-      endTime: { $gt: startTime } 
+      roomId: roomId,
+      date: date,
+      startTime: { $lt: endTime },
+      endTime: { $gt: startTime },
     });
 
-  
     if (conflictingBooking) {
-      return res.status(400).send({ 
-        message: 'দুঃখিত, এই সময়ের স্লটটি ইতিমধ্যে বুকড হয়ে গেছে! অন্য সময় চেষ্টা করুন।' 
+      return res.status(400).send({
+        message: 'দুঃখিত, এই সময়ের স্লটটি ইতিমধ্যে বুকড হয়ে গেছে! অন্য সময় চেষ্টা করুন।',
       });
     }
 
-    
     const booking = {
       ...req.body,
-      userId: req.user.id 
+      userId: req.user.id,
     };
-    
+
     const result = await collection.insertOne(booking);
     res.status(201).send(result);
-
   } catch (error) {
     console.error('Error creating booking:', error);
     res.status(500).send({ message: 'Internal Server Error' });
   }
 });
-
-
-
 
 // Cancel a booking
 router.patch('/bookings/:id/cancel', verifyToken, async (req, res) => {
@@ -91,38 +80,32 @@ router.patch('/bookings/:id/cancel', verifyToken, async (req, res) => {
     const bookingId = req.params.id;
     const userId = req.user.id;
 
-   
     const booking = await bookingsCollection.findOne({ _id: new ObjectId(bookingId) });
 
     if (!booking) {
       return res.status(404).send({ message: 'Booking not found!' });
     }
 
-    
     if (booking.userId !== userId) {
       return res.status(403).send({ message: 'You are not authorized to cancel this booking!' });
     }
 
-
     await bookingsCollection.updateOne(
       { _id: new ObjectId(bookingId) },
-      { $set: { status: 'cancelled' } }
+      { $set: { status: 'cancelled' } },
     );
 
-   
     await usersCollection.updateOne(
       { _id: new ObjectId(userId) },
-      { $pull: { bookings: bookingId } }
+      { $pull: { bookings: bookingId } },
     );
 
-  
     await roomsCollection.updateOne(
       { _id: new ObjectId(booking.roomId) },
-      { $inc: { bookingCount: -1 } }
+      { $inc: { bookingCount: -1 } },
     );
 
     res.status(200).send({ message: 'Booking cancelled successfully' });
-
   } catch (error) {
     console.error('Error cancelling booking:', error);
     res.status(500).send({ message: 'Internal Server Error' });
@@ -150,23 +133,24 @@ router.post('/', verifyToken, async (req, res) => {
 
     const room = {
       ...req.body,
-      ownerId: req.user.id 
+      ownerId: req.user.id,
+      createdAt: new Date(),
     };
+
     const result = await collection.insertOne(room);
     res.status(201).send(result);
   } catch (error) {
     console.error('Error creating room:', error);
     res.status(500).send({ message: 'Internal Server Error' });
-  }  
-});  
+  }
+});
 
 // Get all my rooms
 router.get('/my-rooms', verifyToken, async (req, res) => {
   try {
     const db = await connectDB('StudyNook');
     const collection = db.collection('rooms');
-    
-   
+
     const result = await collection.find({ ownerId: req.user.id }).toArray();
     res.status(200).send(result);
   } catch (error) {
@@ -175,12 +159,36 @@ router.get('/my-rooms', verifyToken, async (req, res) => {
   }
 });
 
-// Get all rooms
-router.get('/',  async (req, res) => {
+// Get all rooms with search & filter
+router.get('/', async (req, res) => {
   try {
     const db = await connectDB('StudyNook');
     const collection = db.collection('rooms');
-    const rooms = await collection.find().toArray();
+
+    // কুয়েরি প্যারামিটারগুলো রিসিভ করা হচ্ছে
+    const { search, amenities, minPrice, maxPrice } = req.query;
+    let query = {};
+
+    // ১. নাম দিয়ে সার্চ ($regex) - case-insensitive ('i')
+    if (search) {
+      query.roomName = { $regex: search, $options: 'i' };
+    }
+
+    // ২. Amenities ফিল্টার ($in)
+    if (amenities) {
+      
+      const amenitiesList = typeof amenities === 'string' ? amenities.split(',') : amenities;
+      query.amenities = { $in: amenitiesList };
+    }
+
+    
+    if (minPrice || maxPrice) {
+      query.pricePerHour = {}; 
+      if (minPrice) query.pricePerHour.$gte = Number(minPrice);
+      if (maxPrice) query.pricePerHour.$lte = Number(maxPrice);
+    }
+
+    const rooms = await collection.find(query).toArray();
     res.status(200).send(rooms);
   } catch (error) {
     console.error('Error fetching rooms:', error);
@@ -188,11 +196,30 @@ router.get('/',  async (req, res) => {
   }
 });
 
+// Get latest featured rooms for homepage
+router.get('/featured-rooms',  async (req, res) => {
+  try {
+    const db = await connectDB('StudyNook');
+
+    const collection = db.collection('rooms');
+
+    const rooms = await collection.find().sort({ createdAt: -1 }).limit(6).toArray();
+
+    res.status(200).send(rooms);
+  } catch (error) {
+    console.error('Error fetching featured rooms:', error);
+
+    res.status(500).send({
+      message: 'Internal Server Error',
+    });
+  }
+});
+
 // Get a specific room
-router.get('/:id',  async (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const roomId = req.params.id;
-    
+
     if (!ObjectId.isValid(roomId)) {
       return res.status(400).send({ message: 'Invalid Room ID format' });
     }
@@ -212,7 +239,7 @@ router.get('/:id',  async (req, res) => {
   }
 });
 
-// Update a specific room 
+// Update a specific room
 router.patch('/:id', verifyToken, async (req, res) => {
   try {
     const roomId = req.params.id;
@@ -224,22 +251,19 @@ router.patch('/:id', verifyToken, async (req, res) => {
     const db = await connectDB('StudyNook');
     const collection = db.collection('rooms');
 
-    
     const room = await collection.findOne({ _id: new ObjectId(roomId) });
 
     if (!room) {
       return res.status(404).send({ message: 'Room not found' });
     }
 
-   
     if (room.ownerId !== req.user.id) {
       return res.status(403).send({ message: 'Forbidden: You can only update your own rooms' });
     }
 
     const updates = req.body;
-    delete updates._id; 
+    delete updates._id;
 
-  
     const result = await collection.updateOne({ _id: new ObjectId(roomId) }, { $set: updates });
 
     res.status(200).send({ message: 'Room updated successfully', result });
@@ -261,14 +285,12 @@ router.delete('/:id', verifyToken, async (req, res) => {
     const db = await connectDB('StudyNook');
     const collection = db.collection('rooms');
 
- 
     const room = await collection.findOne({ _id: new ObjectId(roomId) });
 
     if (!room) {
       return res.status(404).send({ message: 'Room not found' });
     }
 
-  
     if (room.ownerId !== req.user.id) {
       return res.status(403).send({ message: 'Forbidden: You can only delete your own rooms' });
     }
