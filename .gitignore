@@ -1,46 +1,4 @@
 # dependencies
 node_modules/
-
-# env files (VERY IMPORTANT)
 .env
-.env.local
-.env.development
-.env.production
 
-# logs
-logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# runtime
-pids/
-*.pid
-*.seed
-*.pid.lock
-
-# coverage / testing
-coverage/
-
-# build output
-dist/
-build/
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# editor files
-.vscode/
-.idea/
-
-# temporary files
-*.tmp
-
-# dotenv backup
-.env.*
-
-# MongoDB / database dumps (if any)
-*.dump
-*.bak

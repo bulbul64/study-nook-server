@@ -11,7 +11,7 @@ async function verifyToken(req, res, next) {
   }
 
   try {
-    const response = await fetch('http://localhost:3000/api/auth/get-session', {
+    const response = await fetch(`${process.env.CLIENT_URL}/api/auth/get-session`, {
       method: 'GET',
       headers: {
         cookie: cookieHeader,
@@ -35,6 +35,7 @@ async function verifyToken(req, res, next) {
     return res.status(401).send({ message: 'Unauthorized: Server verification error' });
   }
 }
+
 // Create a new booking
 router.post('/bookings', verifyToken, async (req, res) => {
   try {
@@ -165,27 +166,27 @@ router.get('/', async (req, res) => {
     const db = await connectDB('StudyNook');
     const collection = db.collection('rooms');
 
-    // কুয়েরি প্যারামিটারগুলো রিসিভ করা হচ্ছে
-    const { search, amenities, minPrice, maxPrice } = req.query;
+    const { search, amenities, maxPrice } = req.query; 
     let query = {};
 
-    // ১. নাম দিয়ে সার্চ ($regex) - case-insensitive ('i')
+ 
     if (search) {
       query.roomName = { $regex: search, $options: 'i' };
     }
 
-    // ২. Amenities ফিল্টার ($in)
+  
     if (amenities) {
-      
       const amenitiesList = typeof amenities === 'string' ? amenities.split(',') : amenities;
-      query.amenities = { $in: amenitiesList };
+      const lowercasedAmenities = amenitiesList.map(a => a.toLowerCase());
+      query.amenities = { $in: lowercasedAmenities };
     }
 
-    
-    if (minPrice || maxPrice) {
-      query.pricePerHour = {}; 
-      if (minPrice) query.pricePerHour.$gte = Number(minPrice);
-      if (maxPrice) query.pricePerHour.$lte = Number(maxPrice);
+  
+    if (maxPrice) {
+      
+      query.$expr = {
+        $lte: [{ $toDouble: "$hourlyRate" }, Number(maxPrice)]
+      };
     }
 
     const rooms = await collection.find(query).toArray();
@@ -195,6 +196,9 @@ router.get('/', async (req, res) => {
     res.status(500).send({ message: 'Internal Server Error' });
   }
 });
+
+
+
 
 // Get latest featured rooms for homepage
 router.get('/featured-rooms',  async (req, res) => {

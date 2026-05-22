@@ -16,7 +16,7 @@ let dbInstance = null;
 async function connectDB() {
   try {
     if (!dbInstance) {
-      await client.connect();
+      // await client.connect();
       dbInstance = client.db("StudyNook");
       console.log("MongoDB Connected & Ping OK");
     }
